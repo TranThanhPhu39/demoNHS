@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { createEventLog } from "@/lib/banking";
 import { getSessionUserId } from "@/lib/session";
 
 export async function POST() {
@@ -39,6 +38,5 @@ export async function POST() {
       { userId, type: "send", amount: 240, currency: "USD", recipient: "Nhà hàng", fraudFlagged: false, fraudStatus: "cleared" },
     ],
   });
-  await createEventLog(userId, 6, "Dữ liệu demo đã được reset bởi người dùng.");
   return NextResponse.json({ ok: true });
 }

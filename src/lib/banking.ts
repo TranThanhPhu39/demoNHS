@@ -126,7 +126,9 @@ export async function getAccountState(userId?: number) {
   ]);
 
   const totalBalanceUsd = wallets.reduce((sum, wallet) => sum + toUsd(wallet.balance, wallet.currency), 0);
-  const monthlySpending = transactions.filter((transaction) => transaction.type === "send").reduce((sum, transaction) => sum + toUsd(transaction.amount, transaction.currency), 0);
+  const monthlySpending = transactions
+    .filter((transaction) => transaction.type === "send" && transaction.fraudStatus !== "pending")
+    .reduce((sum, transaction) => sum + toUsd(transaction.amount, transaction.currency), 0);
   const monthlyAverage = monthlySpending > 0 ? monthlySpending / Math.max(1, Math.min(3, transactions.length)) : 300;
   const safeThreshold = monthlyAverage * 3;
   const investmentSuggestion = Math.max(totalBalanceUsd - safeThreshold, 0);

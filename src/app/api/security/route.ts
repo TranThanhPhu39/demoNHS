@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
-import { createEventLog, getAccountState } from "@/lib/banking";
+import { createEventLog, getAccountState, toUsd } from "@/lib/banking";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/session";
+
+const SCAM_RECIPIENTS = [
+  "Nguyễn Văn A (số lạ)",
+  "Người tự xưng nhân viên ngân hàng",
+  "Tài khoản chưa xác minh danh tính",
+];
 
 export async function POST() {
   const userId = await getSessionUserId();
@@ -10,14 +16,14 @@ export async function POST() {
   }
 
   const state = await getAccountState(userId);
-  const highestBalance = state.wallets.reduce((sum, wallet) => Math.max(sum, wallet.balance), 0);
-  const recipient = `Scam Demo ${Math.floor(Math.random() * 1000)}`;
+  const highestBalanceUsd = state.wallets.reduce((max, wallet) => Math.max(max, toUsd(wallet.balance, wallet.currency)), 0);
+  const recipient = SCAM_RECIPIENTS[Math.floor(Math.random() * SCAM_RECIPIENTS.length)];
 
   await prisma.transaction.create({
     data: {
       userId,
       type: "send",
-      amount: highestBalance * 0.8,
+      amount: highestBalanceUsd * 0.8,
       currency: "USD",
       recipient,
       fraudFlagged: true,
