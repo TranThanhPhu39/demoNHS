@@ -147,6 +147,21 @@ export async function getAccountState(userId?: number) {
   };
 }
 
+export function buildAccountPayload(state: Awaited<ReturnType<typeof getAccountState>>) {
+  const history = state.portfolio?.historyJson ? JSON.parse(state.portfolio.historyJson) : [];
+  return {
+    user: toPublicUser(state.user),
+    wallets: state.wallets,
+    transactions: state.transactions,
+    portfolio: state.portfolio ? { ...state.portfolio, history } : null,
+    eventLogs: state.eventLogs,
+    totalBalanceUsd: state.totalBalanceUsd,
+    safeThreshold: state.safeThreshold,
+    investmentSuggestion: state.investmentSuggestion,
+    riskProfile: state.riskProfile,
+  };
+}
+
 export async function updateUserKyc(userId: number, name: string, riskProfile: string) {
   return prisma.user.update({
     where: { id: userId },
@@ -164,6 +179,25 @@ export async function updateWalletBalance(userId: number, currency: string, delt
     where: { id: wallet.id },
     data: { balance: wallet.balance + delta },
   });
+}
+
+export async function deductUsdFromWallet(userId: number, amountUsd: number): Promise<boolean> {
+  const wallets = await prisma.walletBalance.findMany({ where: { userId } });
+  const totalAvailableUsd = wallets.reduce((sum, wallet) => sum + toUsd(wallet.balance, wallet.currency), 0);
+  if (amountUsd > totalAvailableUsd) return false;
+
+  const sortedWallets = [...wallets].sort((a, b) => toUsd(b.balance, b.currency) - toUsd(a.balance, a.currency));
+
+  let remainingUsd = amountUsd;
+  for (const wallet of sortedWallets) {
+    if (remainingUsd <= 0) break;
+    const walletUsd = toUsd(wallet.balance, wallet.currency);
+    const deductUsd = Math.min(walletUsd, remainingUsd);
+    await updateWalletBalance(userId, wallet.currency, -fromUsd(deductUsd, wallet.currency));
+    remainingUsd -= deductUsd;
+  }
+
+  return true;
 }
 
 export async function simulatePortfolio(userId: number) {

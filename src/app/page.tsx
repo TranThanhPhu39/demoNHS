@@ -1,12 +1,13 @@
 ﻿"use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 type AccountData = {
   user: { id: number; name: string; email: string; kycStatus: string; riskProfile: string };
   wallets: Array<{ id: number; currency: string; balance: number }>;
   transactions: Array<any>;
-  portfolio: { currentValue: number; historyJson?: string } | null;
+  portfolio: { currentValue: number; historyJson?: string; history?: Array<{ month: string; value: number }> } | null;
   eventLogs: Array<{ id: number; layer: number; content: string }>;
   totalBalanceUsd: number;
   safeThreshold: number;
@@ -22,6 +23,7 @@ export default function HomePage() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("Đang tải dữ liệu demo...");
   const [pendingTransactionId, setPendingTransactionId] = useState<number | null>(null);
+  const [confirmModalDismissed, setConfirmModalDismissed] = useState(false);
   const [authenticated, setAuthenticated] = useState(false);
   const [authChecking, setAuthChecking] = useState(true);
   const [authMode, setAuthMode] = useState<"login" | "signup">("login");
@@ -29,6 +31,8 @@ export default function HomePage() {
   const [authError, setAuthError] = useState("");
   const [quickPayForm, setQuickPayForm] = useState({ amount: "", recipient: "" });
   const [activeView, setActiveView] = useState<ViewMode>("overview");
+  const [toast, setToast] = useState<{ id: number; message: string; tone: "success" | "error" } | null>(null);
+  const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [onboardingForm, setOnboardingForm] = useState({ name: "", riskProfile: "balanced" });
   const [sendForm, setSendForm] = useState({ amount: "", currency: "USD", recipient: "" });
@@ -69,7 +73,20 @@ export default function HomePage() {
       });
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    };
+  }, []);
+
   const formatCurrency = (value: number) => new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(value);
+
+  const notify = (message: string, tone: "success" | "error" = "success") => {
+    setStatus(message);
+    if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
+    setToast({ id: Date.now(), message, tone });
+    toastTimeoutRef.current = setTimeout(() => setToast(null), 3500);
+  };
 
   const handleAuthSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -91,7 +108,7 @@ export default function HomePage() {
       setAccount(payload.account);
       setAuthenticated(true);
       setAuthForm({ email: "", password: "", name: "" });
-      setStatus(authMode === "signup" ? "Tạo tài khoản thành công." : "Đăng nhập thành công.");
+      notify(authMode === "signup" ? "Tạo tài khoản thành công." : "Đăng nhập thành công.");
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Xác thực thất bại");
     } finally {
@@ -107,8 +124,9 @@ export default function HomePage() {
       setAccount(null);
       setAuthenticated(false);
       setPendingTransactionId(null);
+      setConfirmModalDismissed(false);
       setActiveView("overview");
-      setStatus("Đã đăng xuất.");
+      notify("Đã đăng xuất.");
       setBusy(false);
     }
   };
@@ -127,10 +145,10 @@ export default function HomePage() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Onboarding thất bại");
-      setStatus(`Onboarding hoàn tất cho ${payload.user?.name || "khách hàng demo"}`);
+      notify(`Onboarding hoàn tất cho ${payload.user?.name || "khách hàng demo"}`);
       await loadAccount();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Onboarding thất bại");
+      notify(error instanceof Error ? error.message : "Onboarding thất bại", "error");
     } finally {
       setBusy(false);
     }
@@ -154,13 +172,14 @@ export default function HomePage() {
       if (!response.ok) throw new Error(payload.error || "Gửi tiền thất bại");
       if (payload.requiresConfirmation) {
         setPendingTransactionId(payload.transactionId);
-        setStatus("Giao dịch đã bị chặn tạm thời để xác minh bảo mật.");
+        setConfirmModalDismissed(false);
+        notify("Giao dịch đã bị chặn tạm thời để xác minh bảo mật.");
       } else {
-        setStatus("Giao dịch gửi tiền đã hoàn tất.");
+        notify("Giao dịch gửi tiền đã hoàn tất.");
       }
       await loadAccount();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Gửi tiền thất bại");
+      notify(error instanceof Error ? error.message : "Gửi tiền thất bại", "error");
     } finally {
       setBusy(false);
     }
@@ -182,10 +201,10 @@ export default function HomePage() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Nạp tiền thất bại");
-      setStatus("Nạp tiền demo đã được ghi nhận.");
+      notify("Nạp tiền demo đã được ghi nhận.");
       await loadAccount();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Nạp tiền thất bại");
+      notify(error instanceof Error ? error.message : "Nạp tiền thất bại", "error");
     } finally {
       setBusy(false);
     }
@@ -207,10 +226,10 @@ export default function HomePage() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Quy đổi thất bại");
-      setStatus(`Quy đổi thành công, số tiền nhận được khoảng ${formatCurrency(payload.converted || 0)} ${convertForm.toCurrency}`);
+      notify(`Quy đổi thành công, số tiền nhận được khoảng ${formatCurrency(payload.converted || 0)} ${convertForm.toCurrency}`);
       await loadAccount();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Quy đổi thất bại");
+      notify(error instanceof Error ? error.message : "Quy đổi thất bại", "error");
     } finally {
       setBusy(false);
     }
@@ -228,10 +247,10 @@ export default function HomePage() {
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Xác nhận giao dịch thất bại");
       setPendingTransactionId(null);
-      setStatus("Giao dịch đã được xác nhận và hoàn tất.");
+      notify("Giao dịch đã được xác nhận và hoàn tất.");
       await loadAccount();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Xác nhận thất bại");
+      notify(error instanceof Error ? error.message : "Xác nhận thất bại", "error");
     } finally {
       setBusy(false);
     }
@@ -247,10 +266,10 @@ export default function HomePage() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Thao tác đầu tư thất bại");
-      setStatus(action === "allocate" ? `Đã phân bổ ${payload.allocated} USD vào danh mục.` : "Mô phỏng đầu tư 1 tháng đã hoàn tất.");
+      notify(action === "allocate" ? `Đã phân bổ ${payload.allocated} USD vào danh mục.` : "Mô phỏng đầu tư 1 tháng đã hoàn tất.");
       await loadAccount();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Thao tác đầu tư thất bại");
+      notify(error instanceof Error ? error.message : "Thao tác đầu tư thất bại", "error");
     } finally {
       setBusy(false);
     }
@@ -262,10 +281,10 @@ export default function HomePage() {
       const response = await fetch("/api/security", { method: "POST" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Mô phỏng bảo mật thất bại");
-      setStatus(`Đã tạo cảnh báo lừa đảo cho ${payload.recipient}.`);
+      notify(`Đã tạo cảnh báo lừa đảo cho ${payload.recipient}.`);
       await loadAccount();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Mô phỏng bảo mật thất bại");
+      notify(error instanceof Error ? error.message : "Mô phỏng bảo mật thất bại", "error");
     } finally {
       setBusy(false);
     }
@@ -282,10 +301,16 @@ export default function HomePage() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Thanh toán nhanh thất bại");
-      setStatus(`Thanh toán nhanh ${quickPayForm.amount} USD đã được xử lý cho ${quickPayForm.recipient}.`);
+      if (payload.requiresConfirmation) {
+        setPendingTransactionId(payload.transactionId);
+        setConfirmModalDismissed(false);
+        notify("Thanh toán nhanh đã bị tạm giữ để xác minh bảo mật.");
+      } else {
+        notify(`Thanh toán nhanh ${quickPayForm.amount} USD đã được xử lý cho ${quickPayForm.recipient}.`);
+      }
       await loadAccount();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Thanh toán nhanh thất bại");
+      notify(error instanceof Error ? error.message : "Thanh toán nhanh thất bại", "error");
     } finally {
       setBusy(false);
     }
@@ -297,10 +322,12 @@ export default function HomePage() {
       const response = await fetch("/api/reset", { method: "POST" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Reset thất bại");
-      setStatus("Dữ liệu demo đã được khôi phục về trạng thái ban đầu.");
+      setPendingTransactionId(null);
+      setConfirmModalDismissed(false);
+      notify("Dữ liệu demo đã được khôi phục về trạng thái ban đầu.");
       await loadAccount();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Reset thất bại");
+      notify(error instanceof Error ? error.message : "Reset thất bại", "error");
     } finally {
       setBusy(false);
     }
@@ -316,6 +343,48 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white">
+      {toast ? (
+        <div
+          key={toast.id}
+          role="status"
+          className={`animate-toast-in fixed top-24 right-6 z-50 max-w-sm rounded-2xl border px-5 py-4 text-sm font-medium shadow-lg backdrop-blur ${
+            toast.tone === "success"
+              ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+              : "border-rose-500/40 bg-rose-500/15 text-rose-200"
+          }`}
+        >
+          {toast.message}
+        </div>
+      ) : null}
+      {pendingTransactionId && !confirmModalDismissed ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 px-4">
+          <div className="w-full max-w-md rounded-[32px] border border-amber-500/40 bg-slate-900 p-6 shadow-2xl">
+            <p className="text-xs uppercase tracking-[0.24em] text-amber-400">Cần xác minh bảo mật</p>
+            <h2 className="mt-2 text-xl font-semibold text-white">Giao dịch đang chờ xác nhận</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+              Giao dịch của bạn vượt ngưỡng rủi ro nên đã bị tạm giữ, tiền chưa được trừ khỏi ví. Xác nhận để hoàn tất giao dịch, hoặc để sau nếu bạn chưa chắc chắn.
+            </p>
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmModalDismissed(true)}
+                disabled={busy}
+                className="flex-1 rounded-2xl border border-slate-700 px-4 py-3 font-semibold text-slate-300 transition hover:bg-white/10 disabled:opacity-60"
+              >
+                Để sau
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmFraud()}
+                disabled={busy}
+                className="flex-1 rounded-2xl bg-amber-500 px-4 py-3 font-semibold text-slate-950 transition hover:bg-amber-400 disabled:opacity-60"
+              >
+                Xác nhận giao dịch
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <div className="relative overflow-hidden">
         <div className="absolute inset-x-0 top-0 h-96 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.28),transparent_35%)] blur-3xl" />
         <div className="absolute -right-16 top-20 h-80 w-80 rounded-full bg-orange-500/20 blur-3xl" />
@@ -536,7 +605,7 @@ export default function HomePage() {
                       <p className="mt-2 leading-6">Nếu giao dịch vượt ngưỡng rủi ro, hệ thống sẽ chặn và yêu cầu xác nhận bổ sung.</p>
                     </div>
                     {pendingTransactionId ? (
-                      <button onClick={() => void handleConfirmFraud()} disabled={busy} className="mt-4 w-full rounded-2xl border border-amber-500 px-4 py-3 font-semibold text-amber-300 transition hover:bg-amber-500/10 disabled:opacity-60">Xác nhận giao dịch bảo mật</button>
+                      <button onClick={() => setConfirmModalDismissed(false)} disabled={busy} className="mt-4 w-full rounded-2xl border border-amber-500 px-4 py-3 font-semibold text-amber-300 transition hover:bg-amber-500/10 disabled:opacity-60">Xem lại giao dịch cần xác nhận</button>
                     ) : null}
                   </div>
                 </section>
@@ -544,6 +613,35 @@ export default function HomePage() {
 
               {activeView === "investments" && (
                 <section className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
+                  <div className="rounded-[32px] border border-slate-800 bg-slate-900/80 p-6 xl:col-span-2">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Danh mục đầu tư</p>
+                        <h2 className="mt-2 text-2xl font-semibold text-white">Giá trị danh mục hiện tại</h2>
+                      </div>
+                      <p className="text-3xl font-semibold text-white">${formatCurrency(account?.portfolio?.currentValue || 0)}</p>
+                    </div>
+                    {account?.portfolio?.history && account.portfolio.history.length > 0 ? (
+                      <div className="mt-6 h-56">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={account.portfolio.history} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+                            <CartesianGrid stroke="#1e293b" vertical={false} />
+                            <XAxis dataKey="month" stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 12 }} tickLine={false} axisLine={{ stroke: "#1e293b" }} />
+                            <YAxis stroke="#64748b" tick={{ fill: "#94a3b8", fontSize: 12 }} tickLine={false} axisLine={false} width={64} tickFormatter={(value: number) => `$${formatCurrency(value)}`} />
+                            <Tooltip
+                              contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, color: "#e2e8f0" }}
+                              labelStyle={{ color: "#94a3b8" }}
+                              formatter={(value) => [`$${formatCurrency(Number(value))}`, "Giá trị"]}
+                            />
+                            <Line type="monotone" dataKey="value" stroke="#22d3ee" strokeWidth={2} dot={{ r: 4, fill: "#22d3ee", strokeWidth: 0 }} activeDot={{ r: 6 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    ) : (
+                      <p className="mt-6 text-sm text-slate-400">Chưa có dữ liệu lịch sử. Bấm &ldquo;Mô phỏng tháng&rdquo; để xem diễn biến danh mục.</p>
+                    )}
+                  </div>
+
                   <div className="rounded-[32px] border border-slate-800 bg-slate-900/80 p-6">
                     <p className="text-sm uppercase tracking-[0.24em] text-slate-500">Đầu tư</p>
                     <h2 className="mt-2 text-2xl font-semibold text-white">Phân bổ dòng tiền theo khẩu vị rủi ro</h2>

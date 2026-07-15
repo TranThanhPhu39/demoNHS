@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createUserAccount, getAccountState, toPublicUser } from "@/lib/banking";
+import { buildAccountPayload, createUserAccount, getAccountState, toPublicUser } from "@/lib/banking";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
 import { createSession, deleteSession, getSessionUserId } from "@/lib/session";
@@ -11,10 +11,8 @@ export async function GET() {
   }
 
   const state = await getAccountState(userId);
-  return NextResponse.json({
-    user: toPublicUser(state.user),
-    account: { ...state, user: toPublicUser(state.user) },
-  });
+  const account = buildAccountPayload(state);
+  return NextResponse.json({ user: account.user, account });
 }
 
 export async function POST(request: Request) {
@@ -39,11 +37,8 @@ export async function POST(request: Request) {
     const user = await createUserAccount(name || "Khách hàng mới", normalizedEmail, hashPassword(password));
     await createSession(user.id);
     const state = await getAccountState(user.id);
-    return NextResponse.json({
-      ok: true,
-      user: toPublicUser(user),
-      account: { ...state, user: toPublicUser(state.user) },
-    });
+    const account = buildAccountPayload(state);
+    return NextResponse.json({ ok: true, user: toPublicUser(user), account });
   }
 
   if (mode === "login") {
@@ -54,11 +49,8 @@ export async function POST(request: Request) {
 
     await createSession(user.id);
     const state = await getAccountState(user.id);
-    return NextResponse.json({
-      ok: true,
-      user: toPublicUser(user),
-      account: { ...state, user: toPublicUser(state.user) },
-    });
+    const account = buildAccountPayload(state);
+    return NextResponse.json({ ok: true, user: toPublicUser(user), account });
   }
 
   return NextResponse.json({ error: "Mode không hợp lệ." }, { status: 400 });

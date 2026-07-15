@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createEventLog, getAccountState, simulatePortfolio, updateUserKyc } from "@/lib/banking";
+import { createEventLog, deductUsdFromWallet, getAccountState, simulatePortfolio, updateUserKyc } from "@/lib/banking";
 import { prisma } from "@/lib/prisma";
 import { getSessionUserId } from "@/lib/session";
 
@@ -19,24 +19,36 @@ export async function POST(request: Request) {
   }
 
   if (action === "allocate") {
-    const suggestion = Math.max(state.investmentSuggestion, 0);
+    const allocatedAmount = Math.round(Math.max(state.investmentSuggestion, 0));
+    if (allocatedAmount <= 0) {
+      return NextResponse.json({ error: "Không có số dư nhàn rỗi để phân bổ." }, { status: 400 });
+    }
+    if (allocatedAmount > state.totalBalanceUsd) {
+      return NextResponse.json({ error: "Số dư không đủ để phân bổ." }, { status: 400 });
+    }
+
+    const deducted = await deductUsdFromWallet(userId, allocatedAmount);
+    if (!deducted) {
+      return NextResponse.json({ error: "Số dư không đủ để phân bổ." }, { status: 400 });
+    }
+
     const portfolio = state.portfolio;
-    const nextValue = (portfolio?.currentValue ?? state.totalBalanceUsd) + suggestion;
+    const nextValue = Math.round((portfolio?.currentValue ?? 0) + allocatedAmount);
 
     if (portfolio) {
       await prisma.portfolio.update({
         where: { id: portfolio.id },
-        data: { currentValue: Math.round(nextValue), updatedAt: new Date() },
+        data: { currentValue: nextValue, updatedAt: new Date() },
       });
     } else {
       await prisma.portfolio.create({
-        data: { userId, currentValue: Math.round(nextValue), historyJson: JSON.stringify([{ month: "Th01", value: Math.round(nextValue) }]) },
+        data: { userId, currentValue: nextValue, historyJson: JSON.stringify([{ month: "Th01", value: nextValue }]) },
       });
     }
 
-    await createEventLog(userId, 3, `Hệ thống đã đề xuất và áp dụng phân bổ ${Math.round(suggestion)} USD vào danh mục đầu tư.`);
+    await createEventLog(userId, 3, `Hệ thống đã đề xuất và áp dụng phân bổ ${allocatedAmount} USD vào danh mục đầu tư.`);
     await createEventLog(userId, 4, `Khoản tiền phân bổ đã được chuyển vào danh mục đầu tư tự động.`);
-    return NextResponse.json({ ok: true, allocated: Math.round(suggestion) });
+    return NextResponse.json({ ok: true, allocated: allocatedAmount });
   }
 
   if (action === "simulate") {
