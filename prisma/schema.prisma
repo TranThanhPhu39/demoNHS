@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model User {
+  id           Int              @id @default(autoincrement())
+  name         String
+  email        String           @unique
+  passwordHash String
+  kycStatus    String           @default("pending")
+  riskProfile  String           @default("balanced")
+  createdAt    DateTime         @default(now())
+  wallets      WalletBalance[]
+  transactions Transaction[]
+  portfolios   Portfolio[]
+  eventLogs    EventLog[]
+}
+
+model WalletBalance {
+  id       Int    @id @default(autoincrement())
+  userId   Int
+  currency String
+  balance  Float
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Transaction {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  type         String
+  amount       Float
+  currency     String
+  recipient    String?
+  timestamp    DateTime @default(now())
+  fraudFlagged Boolean  @default(false)
+  fraudStatus  String   @default("cleared")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Portfolio {
+  id           Int      @id @default(autoincrement())
+  userId       Int
+  currentValue Float
+  historyJson  String
+  updatedAt    DateTime @default(now())
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model EventLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  layer     Int
+  content   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

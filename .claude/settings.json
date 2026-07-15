@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git check-ignore *)",
+      "Bash(node -e \"console.log\\(require\\('node:crypto'\\).scryptSync ? 'scrypt ok' : 'no scrypt'\\)\")",
+      "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(32\\).toString\\('base64url'\\)\\)\")",
+      "Bash(powershell -NoProfile -Command \"\\(Get-Content -Raw 'src/app/api/transactions/route.ts'\\) -replace 'user\\\\.id', 'userId' | Set-Content -NoNewline 'src/app/api/transactions/route.ts'\")",
+      "Bash(npx tsc *)",
+      "Bash(npx prisma *)",
+      "Bash(node -e ' *)",
+      "Bash(powershell -NoProfile -Command \"\\(Get-Item node_modules\\\\.prisma\\\\client\\\\schema.prisma\\).LastWriteTime\")",
+      "Bash(powershell -NoProfile -Command \"Get-ChildItem -Recurse node_modules\\\\.prisma\\\\client | Select-Object FullName, LastWriteTime | Sort LastWriteTime -Descending | Select -First 10\")",
+      "Bash(npx eslint *)",
+      "Bash(git stash *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(taskkill //PID 31164 //F)",
+      "Bash(curl -s http://localhost:3000/)"
+    ]
+  }
+}
